@@ -1,8 +1,9 @@
 import { connectParachains } from "@acala-network/chopsticks";
+import { setLoggerOptions } from "@mangata-finance/sdk";
 import { KeyringPair } from "@polkadot/keyring/types";
 import { BN_THOUSAND, BN } from "@polkadot/util";
 import { AssetId } from "../../utils/ChainSpecs";
-import { ApiContext } from "../../utils/Framework/XcmHelper";
+import { ApiContext, upgradeMangata } from "../../utils/Framework/XcmHelper";
 import XcmNetworks from "../../utils/Framework/XcmNetworks";
 import { devTestingPairs, setupApi, setupUsers } from "../../utils/setup";
 import {
@@ -10,14 +11,21 @@ import {
   expectJson,
   matchSystemEvents,
 } from "../../utils/validators";
-import { mangataChopstick } from "../../utils/api";
+import { mangataChopstick, reconnectChops } from "../../utils/api";
 import { BN_BILLION, Mangata } from "@mangata-finance/sdk";
 import { Codec } from "@polkadot/types/types";
 import { expectEvent, matchEvents } from "../../utils/eventListeners";
+import { sleep } from "../../utils/utils";
+
+setLoggerOptions({
+  type: "pretty",
+  hideLogPositionForProduction: false,
+});
 
 /**
  * @group xcm
  * @group proxied
+ * @group statemine
  */
 describe("XCM tests for Mangata <-> Statemine", () => {
   let statemine: ApiContext;
@@ -46,7 +54,9 @@ describe("XCM tests for Mangata <-> Statemine", () => {
         Key: alice.address,
       },
     });
-    // await upgradeMangata(mangata);
+    await upgradeMangata(mangata);
+    const uri = mangata.uri;
+    mangata = await reconnectChops(uri, mangata);
   });
 
   beforeEach(async () => {
@@ -225,8 +235,25 @@ describe("XCM tests for Mangata <-> Statemine", () => {
 
     await matchSystemEvents(mangata, "xcmpQueue", "Success");
   });
-  it("[RMRK] mangata transfer assets to statemine", async () => {
+  it.only("[RMRK] mangata transfer assets to statemine", async () => {
     const mgaSdk = Mangata.instance([mangata.uri]);
+    await (await mgaSdk.api()).query.assetRegistry.metadata
+      .entries()
+      .then((res) => {
+        res.forEach((r) => {
+          // eslint-disable-next-line no-console
+          console.log(JSON.stringify(r[0].toHuman()));
+          // eslint-disable-next-line no-console
+          console.log(JSON.stringify(r[1].toHuman()));
+        });
+      });
+    // eslint-disable-next-line no-console
+    console.log("getAssetInfo");
+    await sleep(600000000);
+    await mgaSdk.query.getAssetsInfo().then((res) => {
+      // eslint-disable-next-line no-console
+      console.log(JSON.stringify(res));
+    });
     await mgaSdk.xTokens.withdraw({
       account: alice,
       amount: new BN(10e10),
