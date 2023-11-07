@@ -1,17 +1,20 @@
 /* eslint-disable no-console */
 import {
   BN_ONE,
+  BurnAmount,
   MangataGenericEvent,
   signTx,
   toBN,
   TokenBalance,
+  TradeAbleTokens,
 } from "@mangata-finance/sdk";
 import { AddressOrPair, SubmittableExtrinsic } from "@polkadot/api/types";
 import { KeyringPair } from "@polkadot/keyring/types";
 import { StorageKey } from "@polkadot/types";
 import { AccountData, AccountId32 } from "@polkadot/types/interfaces";
-import { AnyJson, AnyTuple, Codec } from "@polkadot/types/types";
-import { BN } from "@polkadot/util";
+import { AnyJson, Codec } from "@polkadot/types/types";
+import { u32 } from "@polkadot/types-codec";
+import { BN, hexToBn, hexToString } from "@polkadot/util";
 import { env } from "process";
 import { getApi, getMangataInstance } from "./api";
 import {
@@ -30,7 +33,12 @@ import {
   signSendAndWaitToFinishTx,
 } from "./txHandler";
 import { User } from "./User";
-import { getEnvironmentRequiredVars, stringToBN } from "./utils";
+import {
+  getEnvironmentRequiredVars,
+  isRunningInChops,
+  stringToBN,
+} from "./utils";
+import { replaceByStateCall } from "./chopsticksHelper";
 import Keyring from "@polkadot/keyring";
 import { ExtrinsicResult } from "./eventListeners";
 import { Sudo } from "./sudo";
@@ -152,6 +160,24 @@ export async function getBurnAmount(
   secondAssetId: BN,
   liquidityAssetAmount: BN,
 ) {
+  if (isRunningInChops()) {
+    const params = [
+      { paramType: "TokenId", paramValue: firstAssetId.toString() },
+      { paramType: "TokenId", paramValue: secondAssetId.toString() },
+      { paramType: "Balance", paramValue: liquidityAssetAmount },
+    ];
+    const result = await replaceByStateCall(
+      "get_burn_amount",
+      params,
+      "xyk",
+      "(Balance,Balance)",
+    );
+    const burnAmountResult: BurnAmount = {
+      firstAssetAmount: new BN(result[0]),
+      secondAssetAmount: new BN(result[1]),
+    };
+    return burnAmountResult;
+  }
   const mangata = await getMangataInstance();
   const result = await mangata.rpc.getBurnAmount({
     firstTokenId: firstAssetId.toString(),
@@ -162,30 +188,124 @@ export async function getBurnAmount(
   return result;
 }
 
+export async function isSellAssetLockFree(
+  tokens: string[],
+  saleAssetValue: BN,
+) {
+  const [firstCurrency, secondCurrency] = tokens;
+  if (isRunningInChops()) {
+    const params = [
+      { paramType: "Vec<TokenId>", paramValue: tokens },
+      { paramType: "Balance", paramValue: saleAssetValue },
+    ];
+    const result = await replaceByStateCall(
+      "is_sell_asset_lock_free",
+      params,
+      "xyk",
+      "Option<bool>",
+    );
+    return result as any as Boolean;
+  } else {
+    const mangata = await getMangataInstance();
+    return mangata?.rpc.isSellAssetLockFree(
+      [firstCurrency, secondCurrency],
+      saleAssetValue,
+    );
+  }
+}
+
 export async function calculate_sell_price_rpc(
   input_reserve: BN,
   output_reserve: BN,
   sell_amount: BN,
 ): Promise<BN> {
-  const mangata = await getMangataInstance();
-  return await mangata.rpc.calculateSellPrice({
-    amount: sell_amount,
-    inputReserve: input_reserve,
-    outputReserve: output_reserve,
-  });
+  if (isRunningInChops()) {
+    const params = [
+      { paramType: "Balance", paramValue: input_reserve },
+      { paramType: "Balance", paramValue: output_reserve },
+      { paramType: "Balance", paramValue: sell_amount },
+    ];
+    const result = await replaceByStateCall("calculate_sell_price", params);
+    return new BN(result);
+  } else {
+    const mangata = await getMangataInstance();
+    return await mangata.rpc.calculateSellPrice({
+      amount: sell_amount,
+      inputReserve: input_reserve,
+      outputReserve: output_reserve,
+    });
+  }
 }
 
+export async function getMaxInstantBurnAmount(
+  userAddress: string,
+  liqId: string,
+) {
+  const api = getApi();
+  if (isRunningInChops()) {
+    const params = [
+      { paramType: "AccountId", paramValue: userAddress },
+      { paramType: "TokenId", paramValue: liqId },
+    ];
+    const result = await replaceByStateCall(
+      "get_max_instant_burn_amount",
+      params,
+      "xyk",
+      "Balance",
+    );
+    return hexToBn(result);
+  }
+  //@ts-ignore
+  return (await api.rpc.xyk.get_max_instant_burn_amount(
+    userAddress,
+    liqId,
+  )) as any as BN;
+}
+export async function calculateBalancedSellAmount(
+  amount: BN,
+  reserveAmount: BN,
+) {
+  const api = getApi();
+  if (isRunningInChops()) {
+    const params = [
+      { paramType: "Balance", paramValue: amount },
+      { paramType: "Balance", paramValue: reserveAmount },
+    ];
+    const result = await replaceByStateCall(
+      "calculate_balanced_sell_amount",
+      params,
+      "xyk",
+      "Balance",
+    );
+    return new BN(result);
+  }
+  // @ts-ignore
+  return await api.rpc.xyk.calculate_balanced_sell_amount(
+    amount,
+    reserveAmount,
+  );
+}
 export async function calculate_buy_price_rpc(
   inputReserve: BN,
   outputReserve: BN,
   buyAmount: BN,
 ) {
-  const mangata = await getMangataInstance();
-  return await mangata.rpc.calculateBuyPrice({
-    inputReserve: inputReserve,
-    outputReserve: outputReserve,
-    amount: buyAmount,
-  });
+  if (isRunningInChops()) {
+    const params = [
+      { paramType: "Balance", paramValue: inputReserve },
+      { paramType: "Balance", paramValue: outputReserve },
+      { paramType: "Balance", paramValue: buyAmount },
+    ];
+    const result = await replaceByStateCall("calculate_buy_price", params);
+    return new BN(result);
+  } else {
+    const mangata = await getMangataInstance();
+    return await mangata.rpc.calculateBuyPrice({
+      inputReserve: inputReserve,
+      outputReserve: outputReserve,
+      amount: buyAmount,
+    });
+  }
 }
 
 export async function calculate_buy_price_id_rpc(
@@ -193,12 +313,44 @@ export async function calculate_buy_price_id_rpc(
   boughtTokenId: BN,
   buyAmount: BN,
 ) {
-  const mangata = await getMangataInstance();
-  return await mangata.rpc.calculateBuyPriceId(
-    soldTokenId.toString(),
-    boughtTokenId.toString(),
-    buyAmount,
-  );
+  if (isRunningInChops()) {
+    const params = [
+      { paramType: "TokenId", paramValue: soldTokenId.toString() },
+      { paramType: "TokenId", paramValue: boughtTokenId.toString() },
+      { paramType: "Balance", paramValue: buyAmount },
+    ];
+    const result = await replaceByStateCall("calculate_buy_price_id", params);
+    return new BN(result);
+  } else {
+    const mangata = await getMangataInstance();
+    return await mangata.rpc.calculateBuyPriceId(
+      soldTokenId.toString(),
+      boughtTokenId.toString(),
+      buyAmount,
+    );
+  }
+}
+export async function getTradeableTokens() {
+  if (isRunningInChops()) {
+    const result = await replaceByStateCall(
+      "get_tradeable_tokens",
+      [],
+      "xyk",
+      "Vec<RpcAssetMetadata<TokenId>>",
+    );
+    const tradeAble = result.map((item: any) => {
+      return {
+        name: hexToString(item.name),
+        symbol: hexToString(item.symbol),
+        decimals: item.decimals,
+        tokenId: new BN(item.tokenId).toString(),
+      };
+    });
+    return tradeAble as TradeAbleTokens[];
+  } else {
+    const mangata = await getMangataInstance();
+    return await mangata.rpc.getTradeableTokens();
+  }
 }
 
 export async function calculate_sell_price_id_rpc(
@@ -206,12 +358,22 @@ export async function calculate_sell_price_id_rpc(
   boughtTokenId: BN,
   sellAmount: BN,
 ) {
-  const mangata = await getMangataInstance();
-  return await mangata.rpc.calculateSellPriceId(
-    soldTokenId.toString(),
-    boughtTokenId.toString(),
-    sellAmount,
-  );
+  if (isRunningInChops()) {
+    const params = [
+      { paramType: "TokenId", paramValue: soldTokenId.toString() },
+      { paramType: "TokenId", paramValue: boughtTokenId.toString() },
+      { paramType: "Balance", paramValue: sellAmount },
+    ];
+    const result = await replaceByStateCall("calculate_sell_price_id", params);
+    return new BN(result);
+  } else {
+    const mangata = await getMangataInstance();
+    return await mangata.rpc.calculateSellPriceId(
+      soldTokenId.toString(),
+      boughtTokenId.toString(),
+      sellAmount,
+    );
+  }
 }
 
 export async function getCurrentNonce(account?: string) {
@@ -775,7 +937,7 @@ export async function calculateTxCost(
   return queryInfoResult.toHuman();
 }
 export async function getAllAcountEntries(): Promise<
-  [StorageKey<AnyTuple>, Codec][]
+  [StorageKey<[AccountId32, u32]>, Codec][]
 > {
   const api = getApi();
   return await api.query.tokens.accounts.entries();
@@ -925,8 +1087,13 @@ export async function vestingTransfer(
 
 export async function unlockVestedToken(User: User, tokenID: BN) {
   const api = getApi();
-  // @ts-ignore
-  return await signTx(api, api.tx.vesting.vest(tokenID), User.keyRingPair);
+
+  return await signTx(
+    api,
+    // @ts-ignore
+    api.tx.vesting.vest(tokenID),
+    User.keyRingPair,
+  );
 }
 
 export class FeeTxs {

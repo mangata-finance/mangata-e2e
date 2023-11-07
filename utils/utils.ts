@@ -650,6 +650,12 @@ export async function getUserSubIdentity(user: User) {
   const identity = await api.query.identity.superOf(user.keyRingPair.address);
   return JSON.parse(JSON.stringify(identity.toHuman()));
 }
+export function isRunningInChops() {
+  return (
+    process.env.CHOPSTICK_ENABLED &&
+    process.env.CHOPSTICK_ENABLED.toLocaleLowerCase() === "true"
+  );
+}
 
 export function isBadOriginError(events: MangataGenericEvent[]) {
   // Define the JSONPath expression to search for the key

@@ -3,7 +3,7 @@ import {
   BuildBlockMode,
   setupWithServer,
 } from "@acala-network/chopsticks";
-import { StorageValues } from "@acala-network/chopsticks-core/lib/utils/set-storage";
+import { StorageValues } from "@acala-network/chopsticks";
 import { ApiPromise, WsProvider } from "@polkadot/api";
 import { HexString } from "@polkadot/util/types";
 import { getPort } from "get-port-please";
@@ -22,6 +22,7 @@ export type SetupOption = {
   types?: Record<string, any>;
   localPort?: number;
   buildBlockMode?: BuildBlockMode;
+  rpc?: Record<string, any>;
 };
 
 export type DevApi = {
@@ -49,6 +50,7 @@ export const setupContext = async ({
   types,
   localPort,
   buildBlockMode,
+  rpc,
 }: SetupOption): Promise<ApiContext> => {
   // random port
   const port = localPort ? localPort : await getPort();
@@ -62,7 +64,6 @@ export const setupContext = async ({
     "wasm-override": wasmOverride,
     "registered-types": { types: types },
     "runtime-log-level": 5,
-    runtimeLogLevel: 5,
   };
   const { chain, listenPort, close } = await setupWithServer(config);
   const uri = `ws://localhost:${listenPort}`;
@@ -70,6 +71,7 @@ export const setupContext = async ({
   const api = await ApiPromise.create({
     provider: ws,
     types: types,
+    rpc: rpc,
   });
 
   await api.isReady;

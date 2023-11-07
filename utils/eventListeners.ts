@@ -8,7 +8,7 @@ import { logEvent, testLog } from "./Logger";
 import { api } from "./setup";
 import { getEventErrorFromSudo } from "./txHandler";
 import { User } from "./User";
-import { getEnvironmentRequiredVars } from "./utils";
+import { getEnvironmentRequiredVars, isRunningInChops } from "./utils";
 import { Codec } from "@polkadot/types/types";
 
 // lets create a enum for different status.
@@ -77,13 +77,21 @@ export const waitNewBlock = () => {
   const api = getApi();
   let count = 0;
   return new Promise(async (resolve) => {
-    const unsubscribe = await api.rpc.chain.subscribeNewHeads((header: any) => {
-      if (++count === 2) {
-        testLog.getLog().info(`Chain is at block: #${header.number}`);
-        unsubscribe();
-        resolve(true);
-      }
-    });
+    if (isRunningInChops()) {
+      await api.rpc("dev_newBlock", { count: 1 });
+    }
+    const unsubscribe = await api.rpc.chain.subscribeNewHeads(
+      async (header: any) => {
+        if (isRunningInChops()) {
+          await api.rpc("dev_newBlock", { count: 1 });
+        }
+        if (++count === 2) {
+          testLog.getLog().info(`Chain is at block: #${header.number}`);
+          unsubscribe();
+          resolve(true);
+        }
+      },
+    );
   });
 };
 
@@ -132,6 +140,9 @@ export const waitForEvents = async (
   withData: string = "",
 ): Promise<CodecOrArray> => {
   return new Promise(async (resolve, reject) => {
+    if (isRunningInChops()) {
+      await api.rpc("dev_newBlock", { count: 1 });
+    }
     let counter = 0;
     const unsub = await api.rpc.chain.subscribeFinalizedHeads(async (head) => {
       const events = await (await api.at(head.hash)).query.system.events();
@@ -159,6 +170,9 @@ export const waitForEvents = async (
       if (counter === blocks) {
         reject(`method ${method} not found within blocks limit`);
       }
+      if (isRunningInChops()) {
+        await api.rpc("dev_newBlock", { count: 1 });
+      }
     });
   });
 };
@@ -171,6 +185,9 @@ export const waitForRewards = async (
   new Promise(async (resolve) => {
     let numblocks = max;
     const unsub = await api.rpc.chain.subscribeNewHeads(async (header) => {
+      if (isRunningInChops()) {
+        await api.rpc("dev_newBlock", { count: 1 });
+      }
       numblocks--;
       const { chainUri } = getEnvironmentRequiredVars();
       const mangata = await getMangataInstance(chainUri);

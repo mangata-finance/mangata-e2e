@@ -26,6 +26,7 @@ import { BN_HUNDRED_THOUSAND, BN_ZERO } from "@mangata-finance/sdk";
 import { UserFactory, Users } from "../../utils/Framework/User/UserFactory";
 import { RegularUser } from "../../utils/Framework/User/RegularUser";
 import { ExtrinsicResult } from "../../utils/eventListeners";
+import { setupApi } from "../../utils/setup";
 import { getEventResultFromMangataTx } from "../../utils/txHandler";
 
 jest.spyOn(console, "log").mockImplementation(jest.fn());
@@ -42,7 +43,7 @@ const vestedTokenAmount = new BN("9000000000000000000000");
 describe("Vesting", () => {
   beforeAll(async () => {
     keyring = new Keyring({ type: "sr25519" });
-    node = new Node(getEnvironmentRequiredVars().chainUri);
+    node = new Node(getEnvironmentRequiredVars().chainUri, await setupApi());
     await node.connect();
   });
   beforeEach(async () => {

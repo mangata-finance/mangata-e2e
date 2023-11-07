@@ -2,10 +2,11 @@
  *
  * @group paralgasless
  * @group parallel
+ * @group parallelSkipChops
  */
 import { jest } from "@jest/globals";
 import { ApiPromise, Keyring } from "@polkadot/api";
-import { getApi, initApi, mangata } from "../../utils/api";
+import { getApi, initApi } from "../../utils/api";
 import { Assets } from "../../utils/Assets";
 import { MGA_ASSET_ID } from "../../utils/Constants";
 import {
@@ -15,7 +16,12 @@ import {
 import { BN_ZERO } from "@mangata-finance/sdk";
 import { Extrinsic, setupApi, setupUsers } from "../../utils/setup";
 import { Sudo } from "../../utils/sudo";
-import { updateFeeLockMetadata, unlockFee, sellAsset } from "../../utils/tx";
+import {
+  updateFeeLockMetadata,
+  unlockFee,
+  sellAsset,
+  isSellAssetLockFree,
+} from "../../utils/tx";
 import { AssetWallet, User } from "../../utils/User";
 import {
   getEnvironmentRequiredVars,
@@ -106,18 +112,21 @@ beforeAll(async () => {
 
   await Sudo.batchAsSudoFinalized(...txs);
 });
-
+afterEach(async () => {
+  await waitNewBlock();
+});
 test("gasless- GIVEN some locked tokens and no more free MGX WHEN another tx is submitted AND lock period did not finished THEN the operation can not be submitted", async () => {
+  const api = getApi();
+  const feeLockAmount = await (await getFeeLockMetadata(api)).feeLockAmount;
   await testUsers[0].addMGATokens(sudo, feeLockAmount);
 
   const saleAssetValue = thresholdValue.sub(new BN(5));
-  const isFree = await mangata?.rpc.isSellAssetLockFree(
+  const isFree = await isSellAssetLockFree(
     [firstCurrency.toString(), secondCurrency.toString()],
     saleAssetValue,
   );
   expect(isFree).toBeFalsy();
   await testUsers[0].sellAssets(firstCurrency, secondCurrency, saleAssetValue);
-
   await expect(
     sellAsset(
       testUsers[0].keyRingPair,
@@ -125,17 +134,22 @@ test("gasless- GIVEN some locked tokens and no more free MGX WHEN another tx is 
       secondCurrency,
       saleAssetValue,
       new BN(0),
-    ).catch((reason) => {
-      throw new Error(reason.data);
-    }),
+    )
+      .catch((reason) => {
+        throw new Error(reason.data);
+      })
+      .then(() => {
+        throw new Error("This should have failed!");
+      }),
   ).rejects.toThrow(feeLockErrors.FeeLockingFail);
+  await waitNewBlock();
 });
 
 test("gasless- GIVEN some locked tokens and no more free MGX WHEN another tx is submitted AND lock period finished THEN the operation can be submitted ( unlock before locking )", async () => {
   await testUsers[1].addMGATokens(sudo, new BN(feeLockAmount).add(new BN(1)));
 
   const saleAssetValue = thresholdValue.sub(new BN(5));
-  const isFree = await mangata?.rpc.isSellAssetLockFree(
+  const isFree = await isSellAssetLockFree(
     [firstCurrency.toString(), secondCurrency.toString()],
     saleAssetValue,
   );
@@ -166,7 +180,7 @@ test("gasless- GIVEN some locked tokens WHEN querying accountFeeLockData THEN th
   await testUsers[2].addMGATokens(sudo, new BN(feeLockAmount).add(new BN(1)));
 
   const saleAssetValue = thresholdValue.sub(new BN(5));
-  const isFree = await mangata?.rpc.isSellAssetLockFree(
+  const isFree = await isSellAssetLockFree(
     [firstCurrency.toString(), secondCurrency.toString()],
     saleAssetValue,
   );
@@ -195,7 +209,7 @@ test("gasless- GIVEN some locked tokens and lastFeeLockBlock is lower than curre
   await testUsers[3].addMGATokens(sudo, new BN(feeLockAmount).add(new BN(1)));
 
   const saleAssetValue = thresholdValue.sub(new BN(5));
-  const isFree = await mangata?.rpc.isSellAssetLockFree(
+  const isFree = await isSellAssetLockFree(
     [firstCurrency.toString(), secondCurrency.toString()],
     saleAssetValue,
   );
@@ -236,7 +250,7 @@ test("gasless- GIVEN a lock WHEN the period is N THEN the tokens can not be unlo
   await testUsers[4].addMGATokens(sudo, new BN(feeLockAmount));
 
   const saleAssetValue = thresholdValue.sub(new BN(5));
-  const isFree = await mangata?.rpc.isSellAssetLockFree(
+  const isFree = await isSellAssetLockFree(
     [firstCurrency.toString(), secondCurrency.toString()],
     saleAssetValue,
   );

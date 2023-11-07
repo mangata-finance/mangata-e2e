@@ -1,3 +1,4 @@
+/* eslint-disable no-console */
 import {
   calculateFees,
   calculateLiqAssetAmount,
@@ -53,7 +54,6 @@ describe("xyk-pallet: Happy case scenario", () => {
   beforeAll(async () => {
     await setupApi();
     [user1, user2] = setupUsers();
-
     const { xykPalletAddress } = getEnvironmentRequiredVars();
     xykPalletUser = new User(keyring);
     xykPalletUser.addFromAddress(keyring, xykPalletAddress);

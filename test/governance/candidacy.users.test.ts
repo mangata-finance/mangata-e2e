@@ -12,6 +12,7 @@ import { SudoUser } from "../../utils/Framework/User/SudoUser";
 import { UserFactory, Users } from "../../utils/Framework/User/UserFactory";
 import { cryptoWaitReady } from "@polkadot/util-crypto";
 import { getEnvironmentRequiredVars, waitForNBlocks } from "../../utils/utils";
+import { setupApi } from "../../utils/setup";
 
 // Global variables
 const { chainUri: environmentUri } = getEnvironmentRequiredVars();
@@ -41,7 +42,7 @@ beforeAll(async () => {
   await cryptoWaitReady(); // Wait for Polkadots WASM backend
 
   // Instantiate nodes
-  bootnode = new Node(environmentUri);
+  bootnode = new Node(environmentUri, await setupApi());
   await bootnode.connect();
   await bootnode.subscribeToHead();
 

@@ -3,7 +3,7 @@
 import { Guid } from "guid-typescript";
 import { testLog } from "./Logger";
 import { getCandidates, getCurrentNonce } from "./txHandler";
-import { sleep } from "./utils";
+import { isRunningInChops, sleep } from "./utils";
 import ipc from "node-ipc";
 import { BN } from "@polkadot/util";
 export class SudoDB {
@@ -27,7 +27,7 @@ export class SudoDB {
     }
 
     let dbNonce = -1;
-    if (process.argv.includes("--runInBand")) {
+    if (process.argv.includes("--runInBand") || isRunningInChops()) {
       return await getCurrentNonce(sudoAddress);
     }
     dbNonce = await getNonceFromIPC();
@@ -38,7 +38,7 @@ export class SudoDB {
     return dbNonce;
   }
   public async getNextCandidateNum() {
-    if (process.argv.includes("--runInBand")) {
+    if (process.argv.includes("--runInBand") || isRunningInChops()) {
       return await getCandidates();
     }
     const nextCandidateId = await getCandidateCountFromIPC();
@@ -49,6 +49,9 @@ export class SudoDB {
         `[${process.env.JEST_WORKER_ID}] Returned nextCandidateId : ${nextCandidateId}`,
       );
     return nextCandidateId;
+  }
+  public async getPortFromIPC() {
+    return getPortFromIPC();
   }
 
   public async getTokenId() {
@@ -139,6 +142,32 @@ async function getTokenIdFromIPC(): Promise<string> {
           .info(`[${process.env.JEST_WORKER_ID}] Waiting for getTokenId`);
       });
       ipc.of.nonceManager.on("TokenId-" + ipc.config.id, (data: string) => {
+        testLog
+          .getLog()
+          .info(`[${process.env.JEST_WORKER_ID}] I got this ${data}`);
+        ipc.disconnect("nonceManager");
+        resolve(data);
+      });
+    });
+  });
+}
+async function getPortFromIPC(): Promise<number> {
+  return new Promise(function (resolve) {
+    ipc.config.id = Guid.create().toString();
+    ipc.config.retry = 1500;
+    ipc.config.silent = false;
+
+    ipc.connectTo("nonceManager", () => {
+      ipc.of.nonceManager.on("connect", () => {
+        ipc.of.nonceManager.emit("getPort", {
+          id: ipc.config.id,
+          message: `[${process.env.JEST_WORKER_ID}] I need a port`,
+        });
+        testLog
+          .getLog()
+          .info(`[${process.env.JEST_WORKER_ID}] Waiting for port`);
+      });
+      ipc.of.nonceManager.on("port-" + ipc.config.id, (data: number) => {
         testLog
           .getLog()
           .info(`[${process.env.JEST_WORKER_ID}] I got this ${data}`);

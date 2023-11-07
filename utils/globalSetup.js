@@ -3,16 +3,34 @@ import { isBackendTest, setupApi, setupGasLess, setupUsers } from "./setup";
 import dotenv from "dotenv";
 import ipc from "node-ipc";
 import { getApi, initApi } from "./api";
-import { getEnvironmentRequiredVars } from "./utils";
+import { getEnvironmentRequiredVars, isRunningInChops } from "./utils";
 import { Keyring } from "@polkadot/api";
 import { Assets } from "./Assets";
 import { Sudo } from "./sudo";
 import { testLog } from "./Logger.js";
+import { getPort } from "get-port-please";
 
 dotenv.config();
 
-const globalConfig = async () => {
-  if (process.env.CHOPSTICK_ENABLED || process.env.CHOPSTICK_UI) return;
+const globalConfig = async (globalConfig, projectConfig) => {
+  ipc.config.id = "nonceManager";
+  ipc.config.retry = 1500;
+  ipc.config.silent = false;
+  ipc.config.sync = true;
+
+  if (isRunningInChops()) {
+    ipc.serve(function () {
+      ipc.server.on("getPort", async (data, socket) => {
+        const port = await getPort();
+        console.info("serving getPort" + data.id + port);
+        ipc.server.emit(socket, "port-" + data.id, port);
+      });
+    });
+    ipc.server.start();
+
+    // eslint-disable-next-line no-undef
+    globalThis.server = ipc.server;
+  }
 
   try {
     getApi();
@@ -22,10 +40,6 @@ const globalConfig = async () => {
 
   const api = getApi();
 
-  ipc.config.id = "nonceManager";
-  ipc.config.retry = 1500;
-  ipc.config.silent = false;
-  ipc.config.sync = true;
   const { sudo } = getEnvironmentRequiredVars();
   const keyring = new Keyring({ type: "sr25519" });
   const sudoKeyringPair = keyring.createFromUri(sudo);
@@ -63,7 +77,7 @@ const globalConfig = async () => {
   //enable gasless! :brum brum:
   await setupGasLess();
 
-  if (isBackendTest()) {
+  if (isBackendTest() && !isRunningInChops()) {
     testLog.getLog().info("Registering assets....");
     const registeredIds = await registerAssets();
     assetIds = registeredIds.reverse();

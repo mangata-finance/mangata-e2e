@@ -1,6 +1,7 @@
 /*
  *
  * @group parallel
+ * @group parallelSkipChops
  */
 import { jest } from "@jest/globals";
 import { getApi, initApi } from "../../utils/api";
