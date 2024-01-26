@@ -27,9 +27,9 @@ import {
   setupPageWithState,
   waitForMicroappsActionNotification,
 } from "../../utils/frontend/microapps-utils/Handlers";
-import { ApiContext } from "../../utils/Framework/XcmHelper";
+import { ApiContext, upgradeMangata } from "../../utils/Framework/XcmHelper";
 import XcmNetworks from "../../utils/Framework/XcmNetworks";
-import { connectVertical } from "@acala-network/chopsticks";
+import { BuildBlockMode, connectVertical } from "@acala-network/chopsticks";
 import { AssetId } from "../../utils/ChainSpecs";
 import { BN_THOUSAND } from "@mangata-finance/sdk";
 import StashServiceMockSingleton from "../../utils/stashServiceMockSingleton";
@@ -43,6 +43,8 @@ import { LiqPoolDetils } from "../../utils/frontend/microapps-pages/LiqPoolDetai
 //import { Polkadot } from "../../utils/frontend/pages/Polkadot";
 import { TransactionType } from "../../utils/frontend/microapps-pages/NotificationModal";
 import { PositionPageDriver } from "../../utils/frontend/microapps-pages/PositionPage";
+import { setupUsers, sudo } from "../../utils/setup";
+import { testLog } from "../../utils/Logger";
 
 jest.spyOn(console, "log").mockImplementation(jest.fn());
 
@@ -61,17 +63,22 @@ describe("Microapps UI Position page tests", () => {
   let positionPageDriver: PositionPageDriver;
 
   beforeAll(async () => {
-    kusama = await XcmNetworks.kusama({ localPort: 9944 });
-    mangata = await XcmNetworks.mangata({ localPort: 9946 });
+    kusama = await XcmNetworks.kusama({
+      localPort: 9944,
+      buildBlockMode: BuildBlockMode.Instant,
+    });
+    mangata = await XcmNetworks.mangata({
+      localPort: 9946,
+      buildBlockMode: BuildBlockMode.Instant,
+    });
     await connectVertical(kusama.chain, mangata.chain);
     StashServiceMockSingleton.getInstance().startMock();
-
     try {
       getApi();
     } catch (e) {
       await initApi();
     }
-
+    await setupUsers();
     await mangata.dev.setStorage({
       Tokens: {
         Accounts: [
@@ -83,7 +90,7 @@ describe("Microapps UI Position page tests", () => {
         ],
       },
       Sudo: {
-        Key: userAddress,
+        Key: sudo.keyRingPair.address,
       },
     });
     await kusama.dev.setStorage({
@@ -96,7 +103,9 @@ describe("Microapps UI Position page tests", () => {
         ],
       },
     });
+    testLog.getLog().info(`Sudo address is: ${sudo.keyRingPair.address}`);
 
+    await upgradeMangata(mangata);
     driver = await DriverBuilder.getInstance();
     await importPolkadotExtension(driver);
 

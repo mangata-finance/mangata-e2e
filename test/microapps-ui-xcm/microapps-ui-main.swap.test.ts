@@ -22,8 +22,8 @@ import {
   setupPageWithState,
 } from "../../utils/frontend/microapps-utils/Handlers";
 import { Swap } from "../../utils/frontend/microapps-pages/Swap";
-import { ApiContext } from "../../utils/Framework/XcmHelper";
-import { connectVertical } from "@acala-network/chopsticks";
+import { ApiContext, upgradeMangata } from "../../utils/Framework/XcmHelper";
+import { BuildBlockMode, connectVertical } from "@acala-network/chopsticks";
 import { BN_TEN_THOUSAND, BN_THOUSAND } from "@mangata-finance/sdk";
 import { AssetId } from "../../utils/ChainSpecs";
 import XcmNetworks from "../../utils/Framework/XcmNetworks";
@@ -47,8 +47,14 @@ describe("Miocroapps UI swap tests", () => {
   let alice: KeyringPair;
 
   beforeAll(async () => {
-    kusama = await XcmNetworks.kusama({ localPort: 9944 });
-    mangata = await XcmNetworks.mangata({ localPort: 9946 });
+    kusama = await XcmNetworks.kusama({
+      localPort: 9944,
+      buildBlockMode: BuildBlockMode.Instant,
+    });
+    mangata = await XcmNetworks.mangata({
+      localPort: 9946,
+      buildBlockMode: BuildBlockMode.Instant,
+    });
     await connectVertical(kusama.chain, mangata.chain);
     alice = devTestingPairs().alice;
     StashServiceMockSingleton.getInstance().startMock();
@@ -78,7 +84,7 @@ describe("Miocroapps UI swap tests", () => {
         Key: userAddress,
       },
     });
-
+    await upgradeMangata(mangata);
     driver = await DriverBuilder.getInstance();
     await importPolkadotExtension(driver);
 

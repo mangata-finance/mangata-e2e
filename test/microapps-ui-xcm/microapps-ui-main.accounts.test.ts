@@ -22,9 +22,9 @@ import {
 } from "../../utils/frontend/microapps-utils/Handlers";
 import { DepositModal } from "../../utils/frontend/microapps-pages/DepositModal";
 import { WalletWrapper } from "../../utils/frontend/microapps-pages/WalletWrapper";
-import { ApiContext } from "../../utils/Framework/XcmHelper";
+import { ApiContext, upgradeMangata } from "../../utils/Framework/XcmHelper";
 import XcmNetworks from "../../utils/Framework/XcmNetworks";
-import { connectVertical } from "@acala-network/chopsticks";
+import { BuildBlockMode, connectVertical } from "@acala-network/chopsticks";
 import { devTestingPairs } from "../../utils/setup";
 import { AssetId } from "../../utils/ChainSpecs";
 import { BN_THOUSAND } from "@mangata-finance/sdk";
@@ -54,8 +54,14 @@ const { mnemonicPolkadotEd25519, mnemonicPolkadotEcdsa } =
   getEnvironmentRequiredVars();
 
 beforeAll(async () => {
-  kusama = await XcmNetworks.kusama({ localPort: 9944 });
-  mangata = await XcmNetworks.mangata({ localPort: 9946 });
+  kusama = await XcmNetworks.kusama({
+    localPort: 9944,
+    buildBlockMode: BuildBlockMode.Instant,
+  });
+  mangata = await XcmNetworks.mangata({
+    localPort: 9946,
+    buildBlockMode: BuildBlockMode.Instant,
+  });
   await connectVertical(kusama.chain, mangata.chain);
   StashServiceMockSingleton.getInstance().startMock();
 });
@@ -109,7 +115,7 @@ describe.each`
           ],
         },
       });
-
+      await upgradeMangata(mangata);
       driver = await DriverBuilder.getInstance();
       await importPolkadotExtension(driver, mnemonicKey);
 
